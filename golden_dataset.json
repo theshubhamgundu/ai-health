@@ -1,0 +1,45 @@
+
+[
+  {
+    "input": "I have a slight headache and a runny nose.",
+    "expected_urgency": 2,
+    "expected_category": "standard",
+    "expected_specialty": "General Medicine"
+  },
+  {
+    "input": "I have had a high fever and a bad cough for three days.",
+    "expected_urgency": 6,
+    "expected_category": "urgent",
+    "expected_specialty": "General Medicine"
+  },
+  {
+    "input": "I have severe chest pain and I am short of breath.",
+    "expected_urgency": 9,
+    "expected_category": "immediate",
+    "expected_specialty": "Cardiology"
+  },
+  {
+    "input": "My child has a rash and a fever.",
+    "expected_urgency": 5,
+    "expected_category": "urgent",
+    "expected_specialty": "Pediatrics"
+  },
+  {
+    "input": "I think I broke my arm.",
+    "expected_urgency": 8,
+    "expected_category": "immediate",
+    "expected_specialty": "Orthopedics"
+  },
+    {
+    "input": "I think I am rich",
+    "expected_urgency": 0,
+    "expected_category": "standard",
+    "expected_specialty": "No"
+  },
+  {
+    "input": "Im poor",
+    "expected_urgency": 0,
+    "expected_category": "standard",
+    "expected_specialty": "No"
+  }
+]

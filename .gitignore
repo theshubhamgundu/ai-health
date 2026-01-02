@@ -1,0 +1,43 @@
+# Environment variables
+.env
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Audio files (if any are generated)
+*.wav
+*.mp3
+*.m4a
+
+# Model files (if downloaded locally)
+models/
+*.bin
+*.safetensors
+
+# Streamlit cache
+.streamlit/
