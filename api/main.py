@@ -8,7 +8,7 @@ import os
 # Add the parent directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -87,9 +87,13 @@ async def startup_event():
         
     except Exception as e:
         print(f"❌ Error initializing services: {e}")
-        raise
+        # Note: On Vercel, this might fail if cold starting without env vars
+        pass
 
-@app.get("/", response_model=Dict[str, str])
+# Create an API router
+router = APIRouter()
+
+@router.get("/", response_model=Dict[str, str])
 async def root():
     """Root endpoint"""
     return {
@@ -98,7 +102,7 @@ async def root():
         "status": "running"
     }
 
-@app.get("/health", response_model=HealthCheck)
+@router.get("/health", response_model=HealthCheck)
 async def health_check():
     """Health check endpoint"""
     services = {
@@ -112,13 +116,14 @@ async def health_check():
         services=services
     )
 
-@app.post("/triage/text", response_model=TriageResult)
+@router.post("/triage/text", response_model=TriageResult)
 async def analyze_symptoms_text(request: TriageRequest):
     """
     Analyze symptoms from text input
     """
+    global triage_agent
     if not triage_agent:
-        raise HTTPException(status_code=503, detail="Triage agent not available")
+        triage_agent = AroviaTriageAgent()
     
     try:
         if request.location:
@@ -131,12 +136,15 @@ async def analyze_symptoms_text(request: TriageRequest):
             return referral_note.triage_result
         else:
             # Basic triage without facilities
-            return triage_agent.analyze_symptoms_from_text(request.symptoms)
+            result = triage_agent.analyze_symptoms_from_text(request.symptoms)
+            if isinstance(result, tuple):
+                return result[0]
+            return result
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing symptoms: {str(e)}")
 
-@app.post("/triage/voice", response_model=Dict[str, Any])
+@router.post("/triage/voice", response_model=Dict[str, Any])
 async def analyze_symptoms_voice(
     audio_file: UploadFile = File(...),
     language: str = Form("en"),
@@ -145,8 +153,11 @@ async def analyze_symptoms_voice(
     """
     Analyze symptoms from voice input
     """
-    if not triage_agent or not whisper_client:
-        raise HTTPException(status_code=503, detail="Voice processing services not available")
+    global triage_agent, whisper_client
+    if not triage_agent:
+        triage_agent = AroviaTriageAgent()
+    if not whisper_client:
+        whisper_client = WhisperClient(model_size="large-v3")
     
     try:
         # Save uploaded audio file temporarily
@@ -164,7 +175,8 @@ async def analyze_symptoms_voice(
             
             # Analyze symptoms
             if voice_result.transcribed_text.strip():
-                triage_result = triage_agent.analyze_symptoms_from_text(voice_result.transcribed_text)
+                result = triage_agent.analyze_symptoms_from_text(voice_result.transcribed_text)
+                triage_result = result[0] if isinstance(result, tuple) else result
             else:
                 raise HTTPException(status_code=400, detail="No speech detected in audio")
             
@@ -175,31 +187,31 @@ async def analyze_symptoms_voice(
                     "confidence": voice_result.confidence,
                     "processing_time": voice_result.processing_time
                 },
-                "triage_result": triage_result.dict()
+                "triage_result": triage_result.dict() if hasattr(triage_result, 'dict') else triage_result
             }
             
         finally:
             # Clean up temporary file
-            os.unlink(temp_file_path)
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing voice input: {str(e)}")
 
-@app.post("/facilities", response_model=List[Dict[str, Any]])
+@router.post("/facilities", response_model=List[Dict[str, Any]])
 async def get_nearby_facilities(request: LocationRequest):
     """
     Get nearby healthcare facilities
     """
+    global triage_agent
     if not triage_agent:
-        raise HTTPException(status_code=503, detail="Facility matcher not available")
+        triage_agent = AroviaTriageAgent()
     
     try:
         # Get coordinates from location
         if request.coordinates and 'latitude' in request.coordinates and 'longitude' in request.coordinates:
             lat = request.coordinates.get('latitude')
             lon = request.coordinates.get('longitude')
-            if lat is None or lon is None:
-                raise HTTPException(status_code=400, detail="Invalid coordinates provided")
         else:
             # Geocode the location
             coords = triage_agent.facility_matcher.geocode_location(request.location)
@@ -213,40 +225,42 @@ async def get_nearby_facilities(request: LocationRequest):
             radius_km=10.0
         )
         
-        # Handle both dict and object responses
-        if facilities and isinstance(facilities[0], dict):
-            return facilities
-        else:
-            return [facility.dict() if hasattr(facility, 'dict') else facility for facility in facilities]
+        result = []
+        for f in facilities:
+            if hasattr(f, 'dict'):
+                result.append(f.dict())
+            elif isinstance(f, dict):
+                result.append(f)
+            else:
+                result.append(vars(f))
+        return result
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error finding facilities: {str(e)}")
 
-@app.get("/languages", response_model=Dict[str, str])
+@router.get("/languages", response_model=Dict[str, str])
 async def get_supported_languages():
     """
     Get supported languages for voice input
     """
+    global whisper_client
     if not whisper_client:
-        raise HTTPException(status_code=503, detail="Whisper client not available")
-    
+        whisper_client = WhisperClient(model_size="large-v3")
     return whisper_client.get_supported_languages()
 
-@app.get("/models", response_model=Dict[str, Any])
+@router.get("/models", response_model=Dict[str, Any])
 async def get_model_info():
     """
     Get information about loaded models
     """
+    global triage_agent
     if not triage_agent:
-        raise HTTPException(status_code=503, detail="Triage agent not available")
-    
+        triage_agent = AroviaTriageAgent()
     return triage_agent.get_model_info()
 
+# Include the router
+app.include_router(router)
+app.include_router(router, prefix="/api")
+
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

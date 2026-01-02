@@ -9,7 +9,9 @@ import Results from './components/Results';
 import Disclaimer from './components/Disclaimer';
 import type { TriageResult, Facility } from './types';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = window.location.origin.includes('localhost') 
+  ? 'http://localhost:8000' 
+  : '/api';
 
 function App() {
   const [triageResult, setTriageResult] = useState<TriageResult | null>(null);
